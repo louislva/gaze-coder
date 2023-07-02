@@ -3,18 +3,6 @@ import Head from "next/head";
 import { useEffect, useRef, useState } from "react";
 import hljs from "highlight.js";
 
-const exampleDoc = `const input = "";
-
-const output = input
-  .split("\\n\\n")
-  .map((x) => x.trim())
-  .map((x) => x.split("\\n").reduce((acc, x) => acc + parseInt(x), 0))
-  .sort((a, b) => b - a)
-  .slice(0, 3)
-  .reduce((acc, item) => acc + item);
-
-console.log({ output });`;
-
 // Tell typescript that webgazer actually exists as a global variable
 declare var webgazer: any;
 
@@ -45,6 +33,27 @@ export default function Home() {
     }
   }, []);
 
+  const openAIKeyRef = useRef<null | string>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      let acceptedKey: null | string = null;
+      if (localStorage.getItem("openaikey")) {
+        acceptedKey = localStorage.getItem("openaikey");
+      }
+      while (!acceptedKey) {
+        const key = prompt(
+          "Please enter your OpenAI API key, to use GazeCoder:"
+        ) as string;
+        if (key.startsWith("sk-")) {
+          acceptedKey = key;
+        }
+      }
+      localStorage.setItem("openaikey", acceptedKey);
+      openAIKeyRef.current = acceptedKey;
+    }
+  }, []);
+
   return (
     <>
       <Head>
@@ -60,8 +69,8 @@ export default function Home() {
           <div className="p-2 rounded-md bg-zinc-800 text-white flex-1">
             {/* <Callibration /> */}
             <CodeEditor
+              openAIKeyRef={openAIKeyRef}
               gazeY={gazeY}
-              value={exampleDoc}
               onChange={(str) => {}}
             />
           </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import hljs from "highlight.js";
 
 const CodeBlock = (props: {
@@ -15,8 +15,6 @@ const CodeBlock = (props: {
       const startY = ref.current.getBoundingClientRect().top;
       const endY = ref.current.getBoundingClientRect().bottom;
 
-      console.log(startY, endY, "res:", gazeY > startY && gazeY < endY);
-
       onGaze(gazeY < startY ? "over" : gazeY > endY ? "under" : "on");
     }
   }, [gazeY]);
@@ -24,7 +22,7 @@ const CodeBlock = (props: {
   return (
     <div
       className={
-        "font-mono " +
+        "font-mono pb-6 " +
         (highlightLevel === 2
           ? "bg-green-500/20"
           : highlightLevel === 1
@@ -46,12 +44,92 @@ const useFreezeIf = (value: any, condition: boolean) => {
 
   return ref.current;
 };
+
+const transcribe = async (
+  blob: Blob,
+  openAIKeyRef: MutableRefObject<string | null>
+) => {
+  const formData = new FormData();
+  formData.append("file", blob, "audio.webm");
+  formData.append("model", "whisper-1");
+  const response = await fetch(
+    "https://api.openai.com/v1/audio/transcriptions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openAIKeyRef.current}`,
+      },
+      body: formData,
+    }
+  );
+  if (response.status !== 200)
+    throw new Error(`error from whisper: ${response.statusText}`);
+  const data = await response.json();
+  return data;
+};
+const code = async (
+  codeChunks: string[],
+  highlightIndex: number,
+  command: string
+): Promise<string> => {
+  const systemPrompt =
+    "You are an AI coding assistant. The user shows you their code, makes a request, and you output the complete document with the added change. Nothing else.";
+
+  const highlightedCodePrompt =
+    highlightIndex >= 0 && highlightIndex < codeChunks.length
+      ? " When the user was saying that command, they were looking at the following part of the code:\n\n```\n" +
+        codeChunks[highlightIndex] +
+        "\n```\n\nBut I don't fully know if that was the part of the code they were talking about."
+      : "";
+  const fullUserPrompt =
+    "Here's the current code:\n\n```\n" +
+    codeChunks.join("\n\n") +
+    "\n```\n\nAnd here's your command:\n\n\"" +
+    command +
+    '".' +
+    highlightedCodePrompt +
+    " Please do the command / make the change now.";
+
+  console.log("systemPrompt", systemPrompt);
+  console.log("fullUserPrompt", fullUserPrompt);
+
+  const response = await fetch("/api/openai", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gpt-3.5-turbo-16k-0613",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: fullUserPrompt,
+        },
+      ],
+    }),
+  });
+  const json = await response.json();
+  return json[0].message.content;
+};
+
 const CodeEditor = (props: {
+  openAIKeyRef: React.MutableRefObject<string | null>;
   gazeY: number;
-  value: string;
   onChange: (value: string) => void;
 }) => {
-  const { gazeY, value, onChange } = props;
+  const { openAIKeyRef, gazeY, onChange } = props;
+  const [value, setValue] = useState<string>(`const input = "";
+
+const output = input
+  .split("\\n\\n")
+  .map((x) => x.trim())
+  .map((x) => x.split("\\n").reduce((acc, x) => acc + parseInt(x), 0))
+  .sort((a, b) => b - a)
+  .slice(0, 3)
+  .reduce((acc, item) => acc + item);
+
+console.log({ output });`);
 
   const [recording, setRecording] = useState<boolean>(false);
   const [_highlightIndex, setHighlightIndex] = useState<number | null>(null);
@@ -100,30 +178,22 @@ const CodeEditor = (props: {
                 recorderChunksRef.current.push(e.data);
               }
             });
-            mediaRecorderRef.current.addEventListener("stop", () => {
+            mediaRecorderRef.current.addEventListener("stop", async () => {
               console.log("recorder stopped");
-
-              const clipName = prompt("Enter a name for your sound clip");
-
-              const clipContainer = document.createElement("article");
-              const clipLabel = document.createElement("p");
-              const audio = document.createElement("audio");
-
-              clipContainer.classList.add("clip");
-              audio.setAttribute("controls", "");
-              clipLabel.innerHTML = clipName;
-
-              clipContainer.appendChild(audio);
-              clipContainer.appendChild(clipLabel);
-              window.document.body.appendChild(clipContainer);
-
               const blob = new Blob(recorderChunksRef.current, {
                 type: "audio/ogg; codecs=opus",
               });
-              const audioURL = window.URL.createObjectURL(blob);
-              audio.src = audioURL;
+              // const audioURL = window.URL.createObjectURL(blob);
 
               recorderChunksRef.current = [];
+
+              // Send to OpenAI Whisper for transcription
+              const transcription = await transcribe(blob, openAIKeyRef);
+
+              // Send to GPT-3.5 for coding
+              setValue(
+                await code(paragraphs, highlightIndex, transcription.text)
+              );
             });
           })
 
