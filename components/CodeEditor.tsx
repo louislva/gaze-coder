@@ -1,10 +1,11 @@
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import hljs from "highlight.js";
+import { CreateChatCompletionRequest } from "openai";
 
 const CodeBlock = (props: {
   value: string;
   gazeY: number;
-  onGaze: (whereIsGaze: "over" | "under" | "on") => void;
+  onGaze: (whereIsGaze: "above" | "below" | "on") => void;
   highlightLevel: 0 | 1 | 2;
 }) => {
   const { value, gazeY, onGaze, highlightLevel } = props;
@@ -15,7 +16,7 @@ const CodeBlock = (props: {
       const startY = ref.current.getBoundingClientRect().top;
       const endY = ref.current.getBoundingClientRect().bottom;
 
-      onGaze(gazeY < startY ? "over" : gazeY > endY ? "under" : "on");
+      onGaze(gazeY < startY ? "above" : gazeY > endY ? "below" : "on");
     }
   }, [gazeY]);
 
@@ -52,6 +53,7 @@ const transcribe = async (
   const formData = new FormData();
   formData.append("file", blob, "audio.webm");
   formData.append("model", "whisper-1");
+
   const response = await fetch(
     "https://api.openai.com/v1/audio/transcriptions",
     {
@@ -69,14 +71,16 @@ const transcribe = async (
 };
 const code = async (
   codeChunks: string[],
-  highlightIndex: number,
+  highlightIndex: number | null,
   command: string
 ): Promise<string> => {
   const systemPrompt =
-    "You are an AI coding assistant. The user shows you their code, makes a request, and you output the complete document with the added change. Nothing else.";
+    "You are an AI coding assistant. The user shows you their code, makes a request, and you output the raw javascript document, but with the change. Don't output anything else, just the complete document. Wrap it in ```. Do not provide an explanation.";
 
   const highlightedCodePrompt =
-    highlightIndex >= 0 && highlightIndex < codeChunks.length
+    highlightIndex !== null &&
+    highlightIndex >= 0 &&
+    highlightIndex < codeChunks.length
       ? " When the user was saying that command, they were looking at the following part of the code:\n\n```\n" +
         codeChunks[highlightIndex] +
         "\n```\n\nBut I don't fully know if that was the part of the code they were talking about."
@@ -90,27 +94,32 @@ const code = async (
     highlightedCodePrompt +
     " Please do the command / make the change now.";
 
+  console.log("highlightIndex", highlightIndex);
   console.log("systemPrompt", systemPrompt);
   console.log("fullUserPrompt", fullUserPrompt);
-
+  const config: CreateChatCompletionRequest = {
+    model: "gpt-3.5-turbo-16k-0613",
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt,
+      },
+      {
+        role: "user",
+        content: fullUserPrompt,
+      },
+    ],
+    max_tokens: 128,
+  };
   const response = await fetch("/api/openai", {
     method: "POST",
-    body: JSON.stringify({
-      model: "gpt-3.5-turbo-16k-0613",
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: fullUserPrompt,
-        },
-      ],
-    }),
+    body: JSON.stringify(config),
   });
   const json = await response.json();
-  return json[0].message.content;
+  const text = json[0].message.content;
+  if (text.startsWith("```\n") && text.endsWith("\n```")) {
+    return text.slice(4, text.length - 4);
+  }
 };
 
 const CodeEditor = (props: {
@@ -134,6 +143,8 @@ console.log({ output });`);
   const [recording, setRecording] = useState<boolean>(false);
   const [_highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const highlightIndex = useFreezeIf(_highlightIndex, recording);
+  const highlightIndexRef = useRef<number | null>(null);
+  highlightIndexRef.current = highlightIndex;
 
   const paragraphs = value.split("\n\n");
 
@@ -188,11 +199,16 @@ console.log({ output });`);
               recorderChunksRef.current = [];
 
               // Send to OpenAI Whisper for transcription
+              const highlightIndexAtTimeOfRecording = highlightIndexRef.current;
               const transcription = await transcribe(blob, openAIKeyRef);
 
               // Send to GPT-3.5 for coding
               setValue(
-                await code(paragraphs, highlightIndex, transcription.text)
+                await code(
+                  paragraphs,
+                  highlightIndexAtTimeOfRecording,
+                  transcription.text
+                )
               );
             });
           })
@@ -230,16 +246,14 @@ console.log({ output });`);
                 if (whereIsGaze === "on") {
                   setHighlightIndex(index);
                 }
+                if (index === 0 && whereIsGaze === "above") {
+                  setHighlightIndex(-1);
+                }
                 if (
                   index === paragraphs.length - 1 &&
-                  whereIsGaze === "under"
+                  whereIsGaze === "below"
                 ) {
-                  // if we're on the last paragraph and the gaze is still further down, no highlight
-                  setHighlightIndex(index + 1);
-                }
-                if (index === 0 && whereIsGaze === "over") {
-                  // if we're on the first paragraph and the gaze is still further up, no highlight
-                  setHighlightIndex(-1);
+                  setHighlightIndex(paragraphs.length);
                 }
               }
             }}
