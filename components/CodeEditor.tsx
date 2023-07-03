@@ -1,7 +1,8 @@
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import hljs from "highlight.js";
 
-const MAX_HISTORY = 20;
+const HISTORY_BUFFER_SIZE = 20;
+const MIN_RECORDING_DURATION = 500;
 
 const CodeBlock = (props: {
   value: string;
@@ -82,12 +83,14 @@ const code = async (
   highlightedCode: string | null,
   command: string
 ): Promise<ActionType> => {
+  const clipboard = await window.navigator.clipboard.readText();
   const response = await fetch("/api/aiCodeChange", {
     method: "POST",
     body: JSON.stringify({
       value: documentCode,
       command,
       gazedCode: highlightedCode,
+      clipboard,
     }),
   });
   if (response.status === 200) {
@@ -117,6 +120,13 @@ const CodeEditor = (props: {
 
   // State of editing
   const [recording, setRecording] = useState<boolean>(false);
+  const recordingStartedRef = useRef<number>(0);
+  const recordingDurationRef = useRef<number>(0);
+  useEffect(() => {
+    if (recording) recordingStartedRef.current = Date.now();
+    else
+      recordingDurationRef.current = Date.now() - recordingStartedRef.current;
+  }, [recording]);
 
   // State of highlighting / gaze
   const [_gazeIndex, setGazeIndex] = useState<number | null>(null);
@@ -124,8 +134,13 @@ const CodeEditor = (props: {
   const gazeIndexRef = useRef<number | null>(null);
   gazeIndexRef.current = gazeIndex;
   const gazedCode =
-    gazeIndex !== null && gazeIndex >= 0 && gazeIndex < codeChunks.length
-      ? codeChunks[gazeIndex]
+    gazeIndex !== null && gazeIndex >= -1 && gazeIndex < codeChunks.length
+      ? codeChunks
+          .slice(
+            Math.max(0, gazeIndex - 1),
+            Math.min(gazeIndex + 1, codeChunks.length - 1)
+          )
+          .join("\n\n")
       : null;
   const gazedCodeRef = useRef<string | null>(null);
   gazedCodeRef.current = gazedCode;
@@ -181,28 +196,32 @@ const CodeEditor = (props: {
 
               recorderChunksRef.current = [];
 
-              // Send to OpenAI Whisper for transcription
-              const gazeIndexAtTimeOfRecording = gazedCodeRef.current;
-              const transcription = await transcribe(blob, openAIKeyRef);
+              if (recordingDurationRef.current > MIN_RECORDING_DURATION) {
+                // Send to OpenAI Whisper for transcription
+                const gazedCodeAtTimeOfRecording = gazedCodeRef.current;
+                const transcription = await transcribe(blob, openAIKeyRef);
 
-              // Send to GPT-3.5 for coding
-              const { type, payload } = await code(
-                documentCodeRef.current,
-                gazeIndexAtTimeOfRecording,
-                transcription.text
-              );
-              switch (type) {
-                case "updateCode":
-                  setDocumentCodeHistory((prevVersionHistory) =>
-                    prevVersionHistory.concat([payload]).slice(-MAX_HISTORY)
-                  );
-                  break;
-                case "undo":
-                  setDocumentCodeHistory((prevVersionHistory) =>
-                    prevVersionHistory.slice(0, -1)
-                  );
-                default:
-                  break;
+                // Send to GPT-3.5 for coding
+                const { type, payload } = await code(
+                  documentCodeRef.current,
+                  gazedCodeAtTimeOfRecording,
+                  transcription.text
+                );
+                switch (type) {
+                  case "updateCode":
+                    setDocumentCodeHistory((prevVersionHistory) =>
+                      prevVersionHistory
+                        .concat([payload])
+                        .slice(-HISTORY_BUFFER_SIZE)
+                    );
+                    break;
+                  case "undo":
+                    setDocumentCodeHistory((prevVersionHistory) =>
+                      prevVersionHistory.slice(0, -1)
+                    );
+                  default:
+                    break;
+                }
               }
             });
           })
@@ -233,6 +252,7 @@ const CodeEditor = (props: {
       {codeChunks.map((codeChunk, index) => {
         return (
           <CodeBlock
+            key={index}
             value={codeChunk}
             gazeY={gazeY}
             onGaze={(whereIsGaze) => {

@@ -1,0 +1,4 @@
+- [ ] Sanity checks / escaping
+  - [ ] Sanity check that most of the document was't replaced by a tiny snippet (then just regenerate / tell GPT-3.5 that that seems a little short, to get a better result)
+  - [ ] \\n\\n -> \n\n ; maybe just convert them back? I'm not sure
+- [ ] State indication
