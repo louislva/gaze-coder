@@ -1,8 +1,11 @@
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import hljs from "highlight.js";
 
+const ACTION_HISTORY_BUFFER_SIZE = 10;
 const HISTORY_BUFFER_SIZE = 20;
 const MIN_RECORDING_DURATION = 500;
+
+type LoadingStateType = "idle" | "recording" | "transcribing" | "thinking";
 
 const CodeBlock = (props: {
   value: string;
@@ -76,6 +79,7 @@ const transcribe = async (
 export type ActionType = {
   type: "updateCode" | "undo" | "none";
   payload?: any;
+  summary?: string;
 };
 
 const code = async (
@@ -145,6 +149,9 @@ const CodeEditor = (props: {
   const gazedCodeRef = useRef<string | null>(null);
   gazedCodeRef.current = gazedCode;
 
+  // Past actions
+  const [actionHistory, setActionHistory] = useState<ActionType[]>([]);
+
   useEffect(() => {
     // Syntax highlighting (broken)
     setInterval(() => {
@@ -198,14 +205,21 @@ const CodeEditor = (props: {
 
               if (recordingDurationRef.current > MIN_RECORDING_DURATION) {
                 // Send to OpenAI Whisper for transcription
+                setLoadingState("transcribing");
                 const gazedCodeAtTimeOfRecording = gazedCodeRef.current;
                 const transcription = await transcribe(blob, openAIKeyRef);
 
                 // Send to GPT-3.5 for coding
-                const { type, payload } = await code(
+                setLoadingState("thinking");
+                const { type, payload, summary } = await code(
                   documentCodeRef.current,
                   gazedCodeAtTimeOfRecording,
                   transcription.text
+                );
+                setActionHistory((prevActionHistory) =>
+                  prevActionHistory
+                    .concat({ type, payload, summary })
+                    .slice(-ACTION_HISTORY_BUFFER_SIZE)
                 );
                 switch (type) {
                   case "updateCode":
@@ -222,6 +236,9 @@ const CodeEditor = (props: {
                   default:
                     break;
                 }
+                setLoadingState("idle");
+              } else {
+                setLoadingState("idle");
               }
             });
           })
@@ -236,9 +253,11 @@ const CodeEditor = (props: {
     }
   }, []);
 
+  const [loadingState, setLoadingState] = useState<LoadingStateType>("idle");
   useEffect(() => {
     if (mediaRecorderRef.current) {
       if (recording) {
+        setLoadingState("recording");
         recorderChunksRef.current = [];
         mediaRecorderRef.current.start();
       } else {
@@ -248,40 +267,134 @@ const CodeEditor = (props: {
   }, [recording]);
 
   return (
-    <>
-      {codeChunks.map((codeChunk, index) => {
-        return (
-          <CodeBlock
-            key={index}
-            value={codeChunk}
-            gazeY={gazeY}
-            onGaze={(whereIsGaze) => {
-              if (!recording) {
-                if (whereIsGaze === "on") {
-                  setGazeIndex(index);
-                }
-                if (index === 0 && whereIsGaze === "above") {
-                  setGazeIndex(-1);
-                }
-                if (
-                  index === codeChunks.length - 1 &&
-                  whereIsGaze === "below"
-                ) {
-                  setGazeIndex(codeChunks.length);
-                }
+    <div className="flex w-full h-screen flex-row bg-zinc-700">
+      <div className="w-80 h-full flex flex-col overflow-hidden">
+        <div className="h-60 bg-black w-full"></div>
+        <div className="relative flex-1 py-4 pl-4 pr-0 overflow-hidden">
+          {/* Current loading state indicator */}
+          <div className="rounded-md bg-zinc-800 mb-4 flex flex-row items-center text-white p-4 mb-4">
+            <span className="material-symbols-outlined mr-4 text-3xl">
+              {
+                {
+                  idle: "mic",
+                  recording: "record_voice_over",
+                  transcribing: "sms",
+                  thinking: "neurology",
+                }[loadingState]
               }
-            }}
-            highlightLevel={
-              gazeIndex === index
-                ? 2
-                : Math.abs((gazeIndex || -1000) - index) === 1
-                ? 1
-                : 0
-            }
-          />
-        );
-      })}
-    </>
+            </span>
+            <div className="flex-1 flex flex-col text-left items-start">
+              <div className="text-md font-bold">
+                {
+                  {
+                    idle: "Idle",
+                    recording: "Recording...",
+                    transcribing: "Transcribing...",
+                    thinking: "Thinking...",
+                  }[loadingState]
+                }
+              </div>
+              <div>
+                {
+                  {
+                    idle: "(Hold Space to speak)",
+                    recording: "(Release Space when you finish speaking)",
+                    transcribing: "",
+                    thinking: "",
+                  }[loadingState]
+                }
+              </div>
+            </div>
+          </div>
+          {/* Action history */}
+          {!!actionHistory.length && (
+            <div className="rounded-md bg-zinc-800 mb-4 flex flex-col items-start text-white p-4 py-1 mb-4">
+              {actionHistory
+                .slice()
+                .reverse()
+                .map((action, index) => {
+                  return (
+                    <div
+                      className={
+                        "flex flex-row items-center py-3 w-full " +
+                        (!!index ? "border-t border-zinc-700" : "")
+                      }
+                    >
+                      <span className="material-symbols-outlined mr-4 text-3xl">
+                        {
+                          {
+                            undo: "undo",
+                            updateCode: "code",
+                            none: "pending",
+                          }[action.type]
+                        }
+                      </span>
+                      <div className="flex-1 flex flex-col text-left items-start">
+                        <div className="text-md font-bold">
+                          {
+                            {
+                              undo:
+                                'Undo "' +
+                                actionHistory
+                                  .slice()
+                                  .reverse()
+                                  .slice(index)
+                                  .find(
+                                    (action) => action.type === "updateCode"
+                                  )?.summary +
+                                '"',
+                              updateCode: action.summary || "Code updated",
+                              none: "Attempt failed",
+                            }[action.type]
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+          {/* Fade out */}
+          <div className="absolute w-full bottom-0 h-8 from-zinc-700 via-zinc-700 to-transparent bg-gradient-to-t z-10"></div>
+        </div>
+      </div>
+      <div className="flex-1 p-4 flex flex-col">
+        <div className="p-2 rounded-md bg-zinc-800 text-white flex-1">
+          {codeChunks.map((codeChunk, index) => {
+            return (
+              <CodeBlock
+                key={index}
+                value={codeChunk}
+                gazeY={gazeY}
+                onGaze={(whereIsGaze) => {
+                  if (!recording) {
+                    if (whereIsGaze === "on") {
+                      setGazeIndex(index);
+                    }
+                    if (index === 0 && whereIsGaze === "above") {
+                      setGazeIndex(-1);
+                    }
+                    if (
+                      index === codeChunks.length - 1 &&
+                      whereIsGaze === "below"
+                    ) {
+                      setGazeIndex(codeChunks.length);
+                    }
+                  }
+                }}
+                highlightLevel={
+                  gazeIndex === index
+                    ? 2
+                    : Math.abs((gazeIndex || -1000) - index) === 1
+                    ? 1
+                    : 0
+                }
+              />
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 };
 

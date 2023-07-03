@@ -26,8 +26,11 @@ function retryOnException(
   });
 }
 
+function stripFullStopEnding(text: string): string {
+  return text.trim().replace(/[.,]$/, "");
+}
 function stripTranscription(transcription: string): string {
-  return transcription.trim().replace(/\n/g, " ");
+  return stripFullStopEnding(transcription.trim().replace(/\n/g, " "));
 }
 
 async function getIsPasteCommand(command: string): Promise<boolean | null> {
@@ -100,9 +103,11 @@ Remember:
     console.log("userPrompt:", userPrompt);
 
     // CALL GPT-3.5
+    const isPromptLong = (systemPrompt.length + userPrompt.length) / 4 > 2000;
+
     const result = await openai.createChatCompletion({
-      // model: "gpt-3.5-turbo-16k-0613",
-      model: "gpt-4-0613",
+      model: isPromptLong ? "gpt-3.5-turbo-16k-0613" : "gpt-3.5-turbo-0613",
+      // model: "gpt-4-0613",
       temperature: 0.5,
       messages: [
         {
@@ -126,6 +131,10 @@ Remember:
                 type: "string",
                 description: "The code to write the file.",
               },
+              summary: {
+                type: "string",
+                description: "A one sentence description of the change.",
+              },
             },
             required: ["code"],
           },
@@ -140,7 +149,7 @@ Remember:
           },
         },
       ],
-      max_tokens: 6500,
+      max_tokens: isPromptLong ? 6500 : 1800,
     });
     if (result.data.choices[0].message?.function_call) {
       switch (result.data.choices[0].message?.function_call.name) {
@@ -148,7 +157,14 @@ Remember:
           const updatedCode = JSON.parse(
             result.data.choices[0].message.function_call.arguments!
           ).code;
-          action = { type: "updateCode", payload: updatedCode };
+          const summary = JSON.parse(
+            result.data.choices[0].message.function_call.arguments!
+          ).summary;
+          action = {
+            type: "updateCode",
+            payload: updatedCode,
+            summary: stripFullStopEnding(summary),
+          };
           break;
         case "undo":
           action = { type: "undo", payload: null };

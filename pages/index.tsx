@@ -60,23 +60,16 @@ export default function Home() {
       <Head>
         {/* required before everything else loads */}
         <script src="/webgazer.js" type="text/javascript" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+        />
       </Head>
-
-      <div className="flex w-full min-h-screen flex-row bg-zinc-700">
-        <div className="w-80 flex flex-col">
-          <div className="h-60 bg-black w-full"></div>
-        </div>
-        <div className="flex-1 p-4 flex flex-col">
-          <div className="p-2 rounded-md bg-zinc-800 text-white flex-1">
-            {/* <Callibration /> */}
-            <CodeEditor
-              openAIKeyRef={openAIKeyRef}
-              gazeY={gazeY}
-              onChange={(str) => {}}
-            />
-          </div>
-        </div>
-      </div>
+      <CodeEditor
+        openAIKeyRef={openAIKeyRef}
+        gazeY={gazeY}
+        onChange={(str) => {}}
+      />
     </>
   );
 }
