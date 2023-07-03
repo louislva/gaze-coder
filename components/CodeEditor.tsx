@@ -1,6 +1,7 @@
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import hljs from "highlight.js";
-import { CreateChatCompletionRequest } from "openai";
+
+const MAX_HISTORY = 20;
 
 const CodeBlock = (props: {
   value: string;
@@ -70,31 +71,31 @@ const transcribe = async (
   const data = await response.json();
   return data;
 };
+
+export type ActionType = {
+  type: "updateCode" | "undo" | "none";
+  payload?: any;
+};
+
 const code = async (
-  codeChunks: string[],
-  highlightIndex: number | null,
+  documentCode: string,
+  highlightedCode: string | null,
   command: string
-): Promise<string> => {
-  const documentCode = codeChunks.join("\n\n");
+): Promise<ActionType> => {
   const response = await fetch("/api/aiCodeChange", {
     method: "POST",
     body: JSON.stringify({
       value: documentCode,
       command,
-      gazedCode:
-        highlightIndex !== null &&
-        highlightIndex >= 0 &&
-        highlightIndex < codeChunks.length
-          ? codeChunks[highlightIndex]
-          : null,
+      gazedCode: highlightedCode,
     }),
   });
   if (response.status === 200) {
-    const json = await response.json();
-    const { updatedCode } = json;
-    return updatedCode;
+    return await response.json();
   } else {
-    return documentCode;
+    return {
+      type: "none",
+    };
   }
 };
 
@@ -104,21 +105,38 @@ const CodeEditor = (props: {
   onChange: (value: string) => void;
 }) => {
   const { openAIKeyRef, gazeY, onChange } = props;
-  const [value, setValue] = useState<string>(``);
 
+  // State of code
+  const [documentCodeHistory, setDocumentCodeHistory] = useState<string[]>([
+    "",
+  ]);
+  const documentCode = documentCodeHistory[documentCodeHistory.length - 1];
+  const documentCodeRef = useRef<string>(documentCode);
+  documentCodeRef.current = documentCode;
+  const codeChunks = documentCode.split("\n\n");
+
+  // State of editing
   const [recording, setRecording] = useState<boolean>(false);
-  const [_highlightIndex, setHighlightIndex] = useState<number | null>(null);
-  const highlightIndex = useFreezeIf(_highlightIndex, recording);
-  const highlightIndexRef = useRef<number | null>(null);
-  highlightIndexRef.current = highlightIndex;
 
-  const paragraphs = value.split("\n\n");
+  // State of highlighting / gaze
+  const [_gazeIndex, setGazeIndex] = useState<number | null>(null);
+  const gazeIndex = useFreezeIf(_gazeIndex, recording);
+  const gazeIndexRef = useRef<number | null>(null);
+  gazeIndexRef.current = gazeIndex;
+  const gazedCode =
+    gazeIndex !== null && gazeIndex >= 0 && gazeIndex < codeChunks.length
+      ? codeChunks[gazeIndex]
+      : null;
+  const gazedCodeRef = useRef<string | null>(null);
+  gazedCodeRef.current = gazedCode;
 
   useEffect(() => {
+    // Syntax highlighting (broken)
     setInterval(() => {
       hljs.highlightAll();
     }, 500);
 
+    // Space-bar voice commands
     if (typeof window !== "undefined") {
       window.addEventListener("keydown", (e) => {
         if (e.key === " ") {
@@ -146,7 +164,6 @@ const CodeEditor = (props: {
               audio: true,
             }
           )
-
           // Success callback
           .then((stream) => {
             mediaRecorderRef.current = new MediaRecorder(stream);
@@ -165,18 +182,28 @@ const CodeEditor = (props: {
               recorderChunksRef.current = [];
 
               // Send to OpenAI Whisper for transcription
-              const highlightIndexAtTimeOfRecording = highlightIndexRef.current;
+              const gazeIndexAtTimeOfRecording = gazedCodeRef.current;
               const transcription = await transcribe(blob, openAIKeyRef);
 
               // Send to GPT-3.5 for coding
-              const result = await code(
-                paragraphs,
-                highlightIndexAtTimeOfRecording,
+              const { type, payload } = await code(
+                documentCodeRef.current,
+                gazeIndexAtTimeOfRecording,
                 transcription.text
               );
-              console.log({ result });
-
-              setValue(result);
+              switch (type) {
+                case "updateCode":
+                  setDocumentCodeHistory((prevVersionHistory) =>
+                    prevVersionHistory.concat([payload]).slice(-MAX_HISTORY)
+                  );
+                  break;
+                case "undo":
+                  setDocumentCodeHistory((prevVersionHistory) =>
+                    prevVersionHistory.slice(0, -1)
+                  );
+                default:
+                  break;
+              }
             });
           })
 
@@ -203,31 +230,31 @@ const CodeEditor = (props: {
 
   return (
     <>
-      {paragraphs.map((paragraph, index) => {
+      {codeChunks.map((codeChunk, index) => {
         return (
           <CodeBlock
-            value={paragraph}
+            value={codeChunk}
             gazeY={gazeY}
             onGaze={(whereIsGaze) => {
               if (!recording) {
                 if (whereIsGaze === "on") {
-                  setHighlightIndex(index);
+                  setGazeIndex(index);
                 }
                 if (index === 0 && whereIsGaze === "above") {
-                  setHighlightIndex(-1);
+                  setGazeIndex(-1);
                 }
                 if (
-                  index === paragraphs.length - 1 &&
+                  index === codeChunks.length - 1 &&
                   whereIsGaze === "below"
                 ) {
-                  setHighlightIndex(paragraphs.length);
+                  setGazeIndex(codeChunks.length);
                 }
               }
             }}
             highlightLevel={
-              highlightIndex === index
+              gazeIndex === index
                 ? 2
-                : Math.abs((highlightIndex || -1000) - index) === 1
+                : Math.abs((gazeIndex || -1000) - index) === 1
                 ? 1
                 : 0
             }

@@ -1,4 +1,5 @@
 // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
+import { ActionType } from "@/components/CodeEditor";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Configuration, OpenAIApi } from "openai";
 
@@ -13,19 +14,28 @@ function stripTranscription(transcription: string): string {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<ActionType>
 ) {
   console.log(req.body);
 
-  const { value, command, gazedCode } = JSON.parse(req.body);
+  const { value, versionHistory, command, gazedCode } = JSON.parse(req.body);
 
+  const SYSTEM_PROMPT = `You are a JavaScript programmer.
+
+The user gives you a JavaScript file & a request for you.
+
+You then make the requested changes, and save them to the file.
+
+Remember:
++ When you save the file, you overwrite everything inside of it.
++ So make sure to keep all the old lines of code that have not changed.
++ You must never make changes the user didn't explicitly ask for.`;
   const result = await openai.createChatCompletion({
     model: "gpt-3.5-turbo-16k-0613",
     messages: [
       {
         role: "system",
-        content:
-          "You are an AI coder. The user gives you a JavaScript file & a change you need to make to it. You then make the changes, and save them to the file. You must never make changes the user didn't explicitly ask for.",
+        content: SYSTEM_PROMPT,
       },
       {
         role: "user",
@@ -56,27 +66,33 @@ export default async function handler(
           required: ["code"],
         },
       },
+      {
+        name: "undo",
+        description: "Undo the last change a user made.",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      },
     ],
     max_tokens: 6500,
   });
   if (result.data.choices[0].message?.function_call) {
     switch (result.data.choices[0].message?.function_call.name) {
       case "saveCodeToFile":
-        try {
-          const updatedCode = JSON.parse(
-            result.data.choices[0].message.function_call.arguments!
-          ).code;
-          return res.status(200).json({ updatedCode });
-        } catch (error) {
-          console.error(
-            "Fuck it",
-            result.data.choices[0].message.function_call.arguments
-          );
-        }
+        const updatedCode = JSON.parse(
+          result.data.choices[0].message.function_call.arguments!
+        ).code;
+        return res
+          .status(200)
+          .json({ type: "updateCode", payload: updatedCode });
+      case "undo":
+        return res.status(200).json({ type: "undo", payload: null });
       default:
         break;
     }
   }
 
-  return res.status(500).end();
+  return res.status(200).json({ type: "none", payload: null });
 }
