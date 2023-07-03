@@ -141,8 +141,8 @@ const CodeEditor = (props: {
     gazeIndex !== null && gazeIndex >= -1 && gazeIndex < codeChunks.length
       ? codeChunks
           .slice(
-            Math.max(0, gazeIndex - 1),
-            Math.min(gazeIndex + 1, codeChunks.length - 1)
+            Math.max(0, gazeIndex),
+            Math.min(gazeIndex + 1, codeChunks.length)
           )
           .join("\n\n")
       : null;

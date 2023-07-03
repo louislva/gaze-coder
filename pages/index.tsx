@@ -7,6 +7,7 @@ import hljs from "highlight.js";
 declare var webgazer: any;
 
 export default function Home() {
+  const [gazeMode, setGazeMode] = useState<"real" | "mouse">("mouse");
   const [gazeY, setGazeY] = useState(0);
   const gazeYRef = useRef(0);
   gazeYRef.current = gazeY;
@@ -14,25 +15,40 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      webgazer.clearData();
-      webgazer.begin();
-      webgazer.applyKalmanFilter(true);
-      webgazer.setGazeListener((data: any, elapsedTime: number) => {
-        // console.log({ data, elapsedTime });
-        if (data) {
-          const y = Math.min(Math.max(data.y, 0), window.innerHeight);
+      if (gazeMode === "real") {
+        webgazer.clearData();
+        webgazer.begin();
+        webgazer.applyKalmanFilter(true);
+        const gazeListener = (data: any, elapsedTime: number) => {
+          // console.log({ data, elapsedTime });
+          if (data) {
+            const y = Math.min(Math.max(data.y, 0), window.innerHeight);
 
-          if (
-            Math.abs(gazeYRef.current - y) > 1 &&
-            Date.now() - lastGazeYUpdate.current > 50
-          ) {
-            setGazeY(y);
-            lastGazeYUpdate.current = Date.now();
+            if (
+              Math.abs(gazeYRef.current - y) > 1 &&
+              Date.now() - lastGazeYUpdate.current > 50
+            ) {
+              setGazeY(y);
+              lastGazeYUpdate.current = Date.now();
+            }
           }
-        }
-      });
+        };
+        webgazer.setGazeListener(gazeListener);
+        return () => {
+          webgazer.end();
+          //   webgazer.removeGazeListener(gazeListener);
+        };
+      } else {
+        const mouseListener = (event: MouseEvent) => {
+          setGazeY(event.clientY);
+        };
+        window.addEventListener("mousemove", mouseListener);
+        return () => {
+          window.removeEventListener("mousemove", mouseListener);
+        };
+      }
     }
-  }, []);
+  }, [gazeMode]);
 
   const openAIKeyRef = useRef<null | string>(null);
 
