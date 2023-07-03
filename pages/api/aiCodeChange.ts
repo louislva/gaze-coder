@@ -18,6 +18,7 @@ function retryOnException(
   const MIN_WAIT_TIME = 4500;
   const startTimestamp = Date.now();
   return fn().catch((error) => {
+    console.error("Caught and retrying this error:", error);
     if (tries > 1) {
       return wait(
         Math.max(0, MIN_WAIT_TIME - (Date.now() - startTimestamp))
@@ -120,6 +121,29 @@ Remember:
         },
       ],
       functions: [
+        // {
+        //   name: "findAndReplace",
+        //   description:
+        //     "For small changes where you want to edit a few lines, it can be easier to simply do a find & replace. Parameters must be valid JSON",
+        //   parameters: {
+        //     type: "object",
+        //     properties: {
+        //       find: {
+        //         type: "string",
+        //         description: "The code to find",
+        //       },
+        //       replace: {
+        //         type: "string",
+        //         description: "The code to replace it with",
+        //       },
+        //       summary: {
+        //         type: "string",
+        //         description: "A one sentence description of the change.",
+        //       },
+        //     },
+        //     required: ["code"],
+        //   },
+        // },
         {
           name: "saveCodeToFile",
           description:
@@ -153,7 +177,30 @@ Remember:
     });
     if (result.data.choices[0].message?.function_call) {
       switch (result.data.choices[0].message?.function_call.name) {
-        case "saveCodeToFile":
+        case "findAndReplace": {
+          const find = JSON.parse(
+            result.data.choices[0].message.function_call.arguments!
+          ).find;
+          const replace = JSON.parse(
+            result.data.choices[0].message.function_call.arguments!
+          ).replace;
+          if (!value.includes(find)) {
+            throw new Error(
+              "Could not find the string GPT-3 was searching for."
+            );
+          }
+          const updatedCode = value.replace(find, replace);
+          const summary = JSON.parse(
+            result.data.choices[0].message.function_call.arguments!
+          ).summary;
+          action = {
+            type: "updateCode",
+            payload: updatedCode,
+            summary: stripFullStopEnding(summary),
+          };
+          break;
+        }
+        case "saveCodeToFile": {
           const updatedCode = JSON.parse(
             result.data.choices[0].message.function_call.arguments!
           ).code;
@@ -166,15 +213,21 @@ Remember:
             summary: stripFullStopEnding(summary),
           };
           break;
-        case "undo":
+        }
+        case "undo": {
           action = { type: "undo", payload: null };
           break;
-        default:
+        }
+        default: {
+          action = {
+            type: "none",
+            payload: result.data.choices[0].message.content,
+          };
           break;
+        }
       }
     }
   });
 
-  console.log(action);
   return res.status(200).json(action);
 }
