@@ -2,6 +2,7 @@
 import { ActionType } from "@/components/CodeEditor";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Configuration, OpenAIApi } from "openai";
+import * as Diff from "diff";
 
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
@@ -32,6 +33,36 @@ function stripFullStopEnding(text: string): string {
 }
 function stripTranscription(transcription: string): string {
   return stripFullStopEnding(transcription.trim().replace(/\n/g, " "));
+}
+
+// GPT-3.5 sometimes replaces \\n with \n, so we have to just beware & undo that
+function undoUnescapeNewline(before: string, after: string): string {
+  // Get diff
+  const diff = Diff.diffChars(before, after);
+
+  // Find each diff to undo
+  let pos = 0;
+  for (let i = 0; i < diff.length - 1; i++) {
+    const current = diff[i];
+    const next = diff[i + 1];
+
+    if (
+      current.removed &&
+      next.added &&
+      current.value === "\\n" &&
+      next.value === "\n"
+    ) {
+      // UNDO diff
+      next.value = current.value;
+      console.log("UNDID DIFF!");
+    }
+  }
+
+  // Reconstruct b from the diff
+  return diff
+    .filter((d) => !d.removed)
+    .map((d) => d.value)
+    .join("");
 }
 
 async function getIsPasteCommand(command: string): Promise<boolean | null> {
@@ -107,8 +138,8 @@ Remember:
     const isPromptLong = (systemPrompt.length + userPrompt.length) / 4 > 2000;
 
     const result = await openai.createChatCompletion({
-      model: isPromptLong ? "gpt-3.5-turbo-16k-0613" : "gpt-3.5-turbo-0613",
-      // model: "gpt-4-0613",
+      // model: isPromptLong ? "gpt-3.5-turbo-16k-0613" : "gpt-3.5-turbo-0613",
+      model: "gpt-4-0613",
       temperature: 0.5,
       messages: [
         {
@@ -209,7 +240,7 @@ Remember:
           ).summary;
           action = {
             type: "updateCode",
-            payload: updatedCode,
+            payload: undoUnescapeNewline(value, updatedCode),
             summary: stripFullStopEnding(summary),
           };
           break;

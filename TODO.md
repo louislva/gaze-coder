@@ -1,13 +1,17 @@
 - [ ] Sanity checks / escaping
   - [ ] Sanity check that most of the document was't replaced by a tiny snippet (then just regenerate / tell GPT-3.5 that that seems a little short, to get a better result)
-  - [ ] \\n\\n -> \n\n ; maybe just convert them back? I'm not sure
+  - [x] \\n\\n -> \n\n ; maybe just convert them back? I'm not sure
 - [x] State indication
 - [ ] Prompting
   - [x] findAndReplace() function for faster / less touchy inference
   - [ ] Non-function based prompt (Should be system-prompt, with MODE: + PAYLOAD:\n```)
+- [ ] Gaze
+  - [ ] Mouse mode, where we can really test the information of the extreme granular gaze
 - [ ] Editor
   - [ ] Different file tabs (localStorage) + delete button + easy copy / run
   - [ ] "Reset Callibration" button that also explains how to callibrate
 - [ ] Demo
   - [ ] Side view with Advent of Code + Console output
   - [ ] Deploy on gazecoder.louis02x.com + louis02x.com/blog/gaze-coder
+- [ ] Bitrate Study
+  - [ ] Make it measure time in total & without GPT-related waiting time
