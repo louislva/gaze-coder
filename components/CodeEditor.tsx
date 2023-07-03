@@ -9,7 +9,7 @@ const CodeBlock = (props: {
   highlightLevel: 0 | 1 | 2;
 }) => {
   const { value, gazeY, onGaze, highlightLevel } = props;
-  const ref = useRef<HTMLPreElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (ref.current) {
@@ -30,8 +30,9 @@ const CodeBlock = (props: {
           ? "bg-green-500/10"
           : "bg-transparent")
       }
+      ref={ref}
     >
-      <code ref={ref}>
+      <code>
         <pre>{value}</pre>
       </code>
     </div>
@@ -74,51 +75,26 @@ const code = async (
   highlightIndex: number | null,
   command: string
 ): Promise<string> => {
-  const systemPrompt =
-    "You are an AI coding assistant. The user shows you their code, makes a request, and you output the raw javascript document, but with the change. Don't output anything else, just the complete document. Wrap it in ```. Do not provide an explanation.";
-
-  const highlightedCodePrompt =
-    highlightIndex !== null &&
-    highlightIndex >= 0 &&
-    highlightIndex < codeChunks.length
-      ? " When the user was saying that command, they were looking at the following part of the code:\n\n```\n" +
-        codeChunks[highlightIndex] +
-        "\n```\n\nBut I don't fully know if that was the part of the code they were talking about."
-      : "";
-  const fullUserPrompt =
-    "Here's the current code:\n\n```\n" +
-    codeChunks.join("\n\n") +
-    "\n```\n\nAnd here's your command:\n\n\"" +
-    command +
-    '".' +
-    highlightedCodePrompt +
-    " Please do the command / make the change now.";
-
-  console.log("highlightIndex", highlightIndex);
-  console.log("systemPrompt", systemPrompt);
-  console.log("fullUserPrompt", fullUserPrompt);
-  const config: CreateChatCompletionRequest = {
-    model: "gpt-3.5-turbo-16k-0613",
-    messages: [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      {
-        role: "user",
-        content: fullUserPrompt,
-      },
-    ],
-    max_tokens: 128,
-  };
-  const response = await fetch("/api/openai", {
+  const documentCode = codeChunks.join("\n\n");
+  const response = await fetch("/api/aiCodeChange", {
     method: "POST",
-    body: JSON.stringify(config),
+    body: JSON.stringify({
+      value: documentCode,
+      command,
+      gazedCode:
+        highlightIndex !== null &&
+        highlightIndex >= 0 &&
+        highlightIndex < codeChunks.length
+          ? codeChunks[highlightIndex]
+          : null,
+    }),
   });
-  const json = await response.json();
-  const text = json[0].message.content;
-  if (text.startsWith("```\n") && text.endsWith("\n```")) {
-    return text.slice(4, text.length - 4);
+  if (response.status === 200) {
+    const json = await response.json();
+    const { updatedCode } = json;
+    return updatedCode;
+  } else {
+    return documentCode;
   }
 };
 
@@ -128,17 +104,7 @@ const CodeEditor = (props: {
   onChange: (value: string) => void;
 }) => {
   const { openAIKeyRef, gazeY, onChange } = props;
-  const [value, setValue] = useState<string>(`const input = "";
-
-const output = input
-  .split("\\n\\n")
-  .map((x) => x.trim())
-  .map((x) => x.split("\\n").reduce((acc, x) => acc + parseInt(x), 0))
-  .sort((a, b) => b - a)
-  .slice(0, 3)
-  .reduce((acc, item) => acc + item);
-
-console.log({ output });`);
+  const [value, setValue] = useState<string>(``);
 
   const [recording, setRecording] = useState<boolean>(false);
   const [_highlightIndex, setHighlightIndex] = useState<number | null>(null);
@@ -203,13 +169,14 @@ console.log({ output });`);
               const transcription = await transcribe(blob, openAIKeyRef);
 
               // Send to GPT-3.5 for coding
-              setValue(
-                await code(
-                  paragraphs,
-                  highlightIndexAtTimeOfRecording,
-                  transcription.text
-                )
+              const result = await code(
+                paragraphs,
+                highlightIndexAtTimeOfRecording,
+                transcription.text
               );
+              console.log({ result });
+
+              setValue(result);
             });
           })
 
