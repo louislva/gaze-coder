@@ -358,7 +358,7 @@ const CodeEditor = (props: {
           <div className="absolute w-full bottom-0 h-8 from-zinc-700 via-zinc-700 to-transparent bg-gradient-to-t z-10"></div>
         </div>
       </div>
-      <div className="flex-1 p-4 flex flex-col">
+      <div className="flex-1 p-4 flex flex-col overflow-auto">
         <div className="p-2 rounded-md bg-zinc-800 text-white flex-1">
           {codeChunks.map((codeChunk, index) => {
             return (

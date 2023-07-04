@@ -89,6 +89,34 @@ async function getIsPasteCommand(command: string): Promise<boolean | null> {
 
   return answer ?? null;
 }
+async function getIsUndoCommand(command: string): Promise<boolean> {
+  return command.length < 40 && command.toLowerCase().includes("undo");
+}
+
+const NON_FUNCTION_SYSTEM_PROMPT = `You are an AI programmer assistant.
+
+The user sends a message in the following format:
+
+ORIGINAL CODE DOCUMENT:
+${"```"}
+[code]
+${"```"}
+REQUEST: [the user's request of you]
+USER WAS LOOKING AT:
+${"```"}
+[A snippet of code the user was hovering over. This may or may not be useful info]
+${"```"}
+
+The assistant (you) then respond in the following format:
+
+[Description of how you understood the task & what you're going to do]
+CHANGED CODE DOCUMENT:
+${"```"}
+[all of the exact same code, but with the requested change]
+${"```"}
+SUMMARY: [A very short summary of the change; e.g. "Add a green button"]
+
+If the user says "that" or "this", they're probably referring to the part inside of "USER WAS LOOKING AT"`;
 
 export default async function handler(
   req: NextApiRequest,
