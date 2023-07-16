@@ -296,7 +296,17 @@ const CodeEditor = (props: {
   return (
     <div className="flex w-full h-screen flex-row bg-zinc-700">
       <div className="w-80 h-full flex flex-col overflow-hidden">
-        <div className="h-60 bg-black w-full"></div>
+        <div className="h-60 bg-black w-full p-2">
+          <button
+            className="text-white material-symbols-outlined"
+            onClick={() => {
+              // Copy to clipholder
+              window.navigator.clipboard.writeText(documentCode);
+            }}
+          >
+            content_copy
+          </button>
+        </div>
         <div className="relative flex-1 py-4 pl-4 pr-0 overflow-hidden">
           {/* Current loading state indicator */}
           <div className="rounded-md bg-zinc-800 mb-4 flex flex-row items-center text-white p-4 mb-4">
