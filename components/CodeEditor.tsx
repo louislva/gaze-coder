@@ -1,5 +1,6 @@
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
 import hljs from "highlight.js";
+import moment from "moment";
 
 const ACTION_HISTORY_BUFFER_SIZE = 10;
 const HISTORY_BUFFER_SIZE = 20;
@@ -80,6 +81,9 @@ export type ActionType = {
   type: "updateCode" | "undo" | "none";
   payload?: any;
   summary?: string;
+  transcription?: string;
+  tsStart?: number;
+  tsEnd?: number;
 };
 
 const code = async (
@@ -150,7 +154,23 @@ const CodeEditor = (props: {
   gazedCodeRef.current = gazedCode;
 
   // Past actions
+  const sessionStartTs = useRef<number>(Date.now()).current;
   const [actionHistory, setActionHistory] = useState<ActionType[]>([]);
+  useEffect(() => {
+    const totalTimeOnCompute = actionHistory.reduce(
+      (acc, item) =>
+        (item.tsEnd && item.tsStart ? item.tsEnd - item.tsStart : 0) + acc,
+      0
+    );
+    localStorage.setItem(
+      "actionHistory" + sessionStartTs,
+      JSON.stringify(actionHistory)
+    );
+    localStorage.setItem(
+      "totalTimeOnCompute",
+      JSON.stringify(totalTimeOnCompute)
+    );
+  }, [sessionStartTs, actionHistory]);
 
   useEffect(() => {
     // Syntax highlighting (broken)
@@ -206,6 +226,7 @@ const CodeEditor = (props: {
               if (recordingDurationRef.current > MIN_RECORDING_DURATION) {
                 // Send to OpenAI Whisper for transcription
                 setLoadingState("transcribing");
+                const tsStart = Date.now();
                 const gazedCodeAtTimeOfRecording = gazedCodeRef.current;
                 const transcription = await transcribe(blob, openAIKeyRef);
 
@@ -216,10 +237,16 @@ const CodeEditor = (props: {
                   gazedCodeAtTimeOfRecording,
                   transcription.text
                 );
+                const tsEnd = Date.now();
                 setActionHistory((prevActionHistory) =>
-                  prevActionHistory
-                    .concat({ type, payload, summary })
-                    .slice(-ACTION_HISTORY_BUFFER_SIZE)
+                  prevActionHistory.concat({
+                    transcription: transcription.text,
+                    type,
+                    payload,
+                    summary,
+                    tsStart,
+                    tsEnd,
+                  })
                 );
                 switch (type) {
                   case "updateCode":
@@ -313,6 +340,8 @@ const CodeEditor = (props: {
                 .slice()
                 .reverse()
                 .map((action, index) => {
+                  const { tsStart, tsEnd } = action;
+                  const duration = moment.duration(tsEnd! - tsStart!);
                   return (
                     <div
                       className={
@@ -347,6 +376,11 @@ const CodeEditor = (props: {
                               none: "Attempt failed",
                             }[action.type]
                           }
+                        </div>
+                        <div className="flex-1 flex flex-col text-left items-start">
+                          {duration.asMinutes() >= 1
+                            ? `${duration.minutes()} min and ${duration.seconds()}`
+                            : `${duration.seconds()} seconds`}
                         </div>
                       </div>
                     </div>

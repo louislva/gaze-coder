@@ -7,7 +7,7 @@ import hljs from "highlight.js";
 declare var webgazer: any;
 
 export default function Home() {
-  const [gazeMode, setGazeMode] = useState<"real" | "mouse">("real");
+  const [gazeMode, setGazeMode] = useState<"real" | "mouse">("mouse");
 
   const [gazeY, setGazeY] = useState(0);
   const gazeYRef = useRef(0);
