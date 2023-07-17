@@ -134,7 +134,7 @@ Remember:
         ).summary;
         return {
           updated: undoUnescapeNewline(original, updatedCode),
-          summary: stripFullStopEnding(summary),
+          summary: summary && stripFullStopEnding(summary),
         };
       }
       case "undo": {

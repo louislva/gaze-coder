@@ -54,7 +54,7 @@ export default async function handler(
         summary,
       })
     );
-  }, 1);
+  }, 3);
 
   return res.status(200).json(action);
 }

@@ -7,4 +7,4 @@ export type WriteCodeOutput = {
 };
 
 export { writeCodeTwoStep, writeCodeOAFunctions };
-export default writeCodeTwoStep;
+export default writeCodeOAFunctions;

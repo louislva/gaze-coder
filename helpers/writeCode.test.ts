@@ -23,10 +23,10 @@ const FUNCTIONS_TO_TEST = [
     name: "writeCodeTwoStep",
     function: writeCodeTwoStep,
   },
-  //   {
-  //     name: "writeCodeOAFunctions",
-  //     function: writeCodeOAFunctions,
-  //   },
+  {
+    name: "writeCodeOAFunctions",
+    function: writeCodeOAFunctions,
+  },
 ];
 
 FUNCTIONS_TO_TEST.forEach(({ name: functionName, function: writeCode }) => {
