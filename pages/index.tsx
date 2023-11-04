@@ -63,7 +63,7 @@ export default function Home() {
         const key = prompt(
           "Please enter your OpenAI API key, to use GazeCoder:"
         ) as string;
-        if (key.startsWith("sk-")) {
+        if (key && key.startsWith("sk-")) {
           acceptedKey = key;
         }
       }
@@ -84,6 +84,8 @@ export default function Home() {
         />
       </Head>
       <CodeEditor
+        gazeMode={gazeMode}
+        setGazeMode={setGazeMode}
         openAIKeyRef={openAIKeyRef}
         gazeY={gazeY}
         onChange={(str) => {}}

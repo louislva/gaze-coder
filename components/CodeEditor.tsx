@@ -107,11 +107,13 @@ const code = async (
 };
 
 const CodeEditor = (props: {
+  gazeMode: "real" | "mouse";
+  setGazeMode: (gazeMode: "real" | "mouse") => void;
   openAIKeyRef: React.MutableRefObject<string | null>;
   gazeY: number;
   onChange: (value: string) => void;
 }) => {
-  const { openAIKeyRef, gazeY, onChange } = props;
+  const { gazeMode, setGazeMode, openAIKeyRef, gazeY, onChange } = props;
 
   // State of code
   const [documentCodeHistory, setDocumentCodeHistory] = useState<string[]>([
@@ -269,7 +271,46 @@ const CodeEditor = (props: {
   return (
     <div className="flex w-full h-screen flex-row bg-zinc-700">
       <div className="w-80 h-full flex flex-col overflow-hidden">
-        <div className="h-60 bg-black w-full"></div>
+        <div className="h-60 bg-black w-full">
+          <div
+            className="absolute m-4 h-12 bg-zinc-800 p-1 flex flex-row gap-1"
+            style={{
+              zIndex: 1000,
+              borderRadius: "0.5rem",
+            }}
+          >
+            <button
+              className={
+                "text-lg text-zinc-300 h-full px-2 flex flex-row items-center gap-2 transition-all duration-200 " +
+                (gazeMode === "real"
+                  ? "bg-zinc-600"
+                  : "bg-transparent hover:bg-zinc-700")
+              }
+              onClick={() => setGazeMode("real")}
+              style={{
+                borderRadius: "0.25rem",
+              }}
+            >
+              <span className="material-symbols-outlined">face</span>
+              Eyes
+            </button>
+            <button
+              className={
+                "text-lg text-zinc-300 h-full px-2 flex flex-row items-center gap-2 transition-all duration-200 " +
+                (gazeMode === "mouse"
+                  ? "bg-zinc-600"
+                  : "bg-transparent hover:bg-zinc-700")
+              }
+              onClick={() => setGazeMode("mouse")}
+              style={{
+                borderRadius: "0.25rem",
+              }}
+            >
+              <span className="material-symbols-outlined">mouse</span>
+              Mouse
+            </button>
+          </div>
+        </div>
         <div className="relative flex-1 py-4 pl-4 pr-0 overflow-hidden">
           {/* Current loading state indicator */}
           <div className="rounded-md bg-zinc-800 mb-4 flex flex-row items-center text-white p-4 mb-4">
